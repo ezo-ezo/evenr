@@ -185,3 +185,64 @@ func TestMethodAndRoutes(t *testing.T) {
 		t.Errorf("GET /nope = %d, want 404", missing.Code)
 	}
 }
+
+func TestServesDemoPage(t *testing.T) {
+	h := New(realPlanner(nil, nil, nil), quiet)
+	get := func(path string) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		return rec
+	}
+
+	page := get("/")
+	if page.Code != http.StatusOK || !strings.Contains(page.Body.String(), "<title>Evenr</title>") {
+		t.Fatalf("GET / = %d, body starts %.60q", page.Code, page.Body)
+	}
+	if ct := page.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Errorf("GET / Content-Type = %q", ct)
+	}
+	csp := page.Header().Get("Content-Security-Policy")
+	if !strings.Contains(csp, "script-src 'self'") || strings.Contains(csp, "unsafe-inline") {
+		t.Errorf("Content-Security-Policy = %q, want scripts restricted to self", csp)
+	}
+
+	js := get("/static/app.js")
+	if js.Code != http.StatusOK || !strings.Contains(js.Header().Get("Content-Type"), "javascript") {
+		t.Errorf("GET /static/app.js = %d %q", js.Code, js.Header().Get("Content-Type"))
+	}
+	if css := get("/static/style.css"); css.Code != http.StatusOK || !strings.Contains(css.Header().Get("Content-Type"), "css") {
+		t.Errorf("GET /static/style.css = %d %q", css.Code, css.Header().Get("Content-Type"))
+	}
+
+	for _, path := range []string{"/nope", "/static/missing.js", "/static/../handler.go", "/index.html"} {
+		if rec := get(path); rec.Code != http.StatusNotFound && rec.Code != http.StatusMovedPermanently && rec.Code != http.StatusTemporaryRedirect {
+			t.Errorf("GET %s = %d, want 404 or a redirect to a cleaned path", path, rec.Code)
+		}
+	}
+	if body := get("/static/../handler.go").Body.String(); strings.Contains(body, "package httpapi") {
+		t.Error("path traversal leaked a source file")
+	}
+}
+
+func TestFeaturesReportsAdmin(t *testing.T) {
+	features := func(h http.Handler) map[string]bool {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/features", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET /v1/features = %d", rec.Code)
+		}
+		var out map[string]bool
+		if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+			t.Fatalf("not JSON: %v", err)
+		}
+		return out
+	}
+
+	if features(New(realPlanner(nil, nil, nil), quiet))["admin"] {
+		t.Error("admin should be reported off by default")
+	}
+	withAdmin := New(realPlanner(nil, nil, nil), quiet, WithFaultAdmin(map[string]*providers.Faults{}))
+	if !features(withAdmin)["admin"] {
+		t.Error("admin should be reported on when the option is set")
+	}
+}

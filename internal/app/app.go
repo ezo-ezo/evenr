@@ -151,6 +151,9 @@ func New(cfg Config, logger *slog.Logger) *App {
 	opts := []httpapi.Option{httpapi.WithMetrics(a.Metrics)}
 	if cfg.EnableAdmin {
 		opts = append(opts, httpapi.WithFaultAdmin(a.Faults))
+		if a.Cache != nil {
+			opts = append(opts, httpapi.WithCacheReset(a.Cache.Clear))
+		}
 	}
 	a.Handler = httpapi.New(a.Planner, logger, opts...)
 	return a

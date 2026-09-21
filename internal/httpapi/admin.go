@@ -80,6 +80,15 @@ func (h *handler) routeAdmin(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	mux.HandleFunc("POST /admin/cache/reset", func(w http.ResponseWriter, _ *http.Request) {
+		if h.resetCache == nil {
+			writeError(w, http.StatusNotFound, "the cache is disabled")
+			return
+		}
+		h.resetCache()
+		writeJSON(w, http.StatusOK, map[string]string{"status": "cache cleared"})
+	})
+
 	mux.HandleFunc("PUT /admin/faults/{provider}", func(w http.ResponseWriter, r *http.Request) {
 		name := r.PathValue("provider")
 		f, ok := h.faults[name]
@@ -125,4 +134,10 @@ func join(names []string) string {
 // WithMetrics records request and plan metrics and serves them at /metrics.
 func WithMetrics(m *metrics.Metrics) Option {
 	return func(h *handler) { h.metrics = m }
+}
+
+// WithCacheReset adds POST /admin/cache/reset, which calls reset. It only
+// takes effect together with WithFaultAdmin.
+func WithCacheReset(reset func()) Option {
+	return func(h *handler) { h.resetCache = reset }
 }

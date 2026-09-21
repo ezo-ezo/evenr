@@ -228,3 +228,35 @@ func TestMetricsEndpoint(t *testing.T) {
 		t.Error("raw request paths must not appear as label values")
 	}
 }
+
+func TestCacheResetEndpoint(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.EnableAdmin = true
+	a := New(cfg, quiet)
+
+	do(t, a.Handler, http.MethodPost, "/v1/plan", planBody)
+	before := a.Cache.Stats().Misses
+
+	if rec, _ := do(t, a.Handler, http.MethodPost, "/admin/cache/reset", ""); rec.Code != http.StatusOK {
+		t.Fatalf("reset status %d: %s", rec.Code, rec.Body)
+	}
+	do(t, a.Handler, http.MethodPost, "/v1/plan", planBody)
+	if after := a.Cache.Stats().Misses; after <= before {
+		t.Errorf("misses %d -> %d; the cache should have been empty after reset", before, after)
+	}
+
+	off := New(DefaultConfig(), quiet)
+	if rec, _ := do(t, off.Handler, http.MethodPost, "/admin/cache/reset", ""); rec.Code == http.StatusOK {
+		t.Error("reset must not exist without ENABLE_ADMIN")
+	}
+}
+
+func TestCacheResetWithCacheDisabled(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.EnableAdmin = true
+	cfg.CacheTTL = 0
+	a := New(cfg, quiet)
+	if rec, _ := do(t, a.Handler, http.MethodPost, "/admin/cache/reset", ""); rec.Code != http.StatusNotFound {
+		t.Errorf("reset with the cache disabled = %d, want 404", rec.Code)
+	}
+}

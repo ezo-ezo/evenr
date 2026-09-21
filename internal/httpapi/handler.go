@@ -36,6 +36,8 @@ func New(p Planner, logger *slog.Logger, opts ...Option) http.Handler {
 		_, _ = io.WriteString(w, "ok")
 	})
 	mux.HandleFunc("POST /v1/plan", h.plan)
+	h.routeUI(mux)
+	h.routeFeatures(mux)
 	if h.metrics != nil {
 		mux.Handle("GET /metrics", h.metrics.Handler())
 	}
@@ -46,10 +48,11 @@ func New(p Planner, logger *slog.Logger, opts ...Option) http.Handler {
 }
 
 type handler struct {
-	planner Planner
-	logger  *slog.Logger
-	faults  map[string]*providers.Faults // nil unless admin is enabled
-	metrics *metrics.Metrics             // nil disables metrics
+	planner    Planner
+	logger     *slog.Logger
+	faults     map[string]*providers.Faults // nil unless admin is enabled
+	metrics    *metrics.Metrics             // nil disables metrics
+	resetCache func()                       // nil unless the cache can be reset from admin
 }
 
 type planRequest struct {

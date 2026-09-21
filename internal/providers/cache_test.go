@@ -180,3 +180,15 @@ func TestCacheFetchTimeoutBoundsAbandonedFetch(t *testing.T) {
 		t.Errorf("%d fetches still in flight after FetchTimeout", pending)
 	}
 }
+
+func TestCacheClear(t *testing.T) {
+	stub := &stubTravel{}
+	c := NewCachedTravel(stub, time.Minute)
+
+	_, _ = c.TravelTime(context.Background(), "a", "b")
+	c.Clear()
+	_, _ = c.TravelTime(context.Background(), "a", "b")
+	if got := stub.calls.Load(); got != 2 {
+		t.Errorf("upstream called %d times around a Clear, want 2", got)
+	}
+}

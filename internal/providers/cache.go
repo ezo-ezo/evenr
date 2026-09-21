@@ -132,3 +132,11 @@ func (c *CachedTravel) fetch(ctx context.Context, key [2]string, from, to string
 	f.value, f.err = value, err
 	close(f.done)
 }
+
+// Clear drops every cached entry. Fetches already in flight are unaffected
+// and will repopulate the cache when they finish.
+func (c *CachedTravel) Clear() {
+	c.mu.Lock()
+	clear(c.entries)
+	c.mu.Unlock()
+}

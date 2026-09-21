@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Evenr</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <h1>Evenr</h1>
+    <p>Dinner and a film that actually fit together. Every plan is checked for table
+       availability, travel time between stops and budget, under a strict latency budget.</p>
+  </header>
+
+  <main>
+    <section class="panel" aria-labelledby="ask-h">
+      <h2 id="ask-h">Plan an evening</h2>
+      <form id="plan-form">
+        <label>Area
+          <select id="area" name="area">
+            <option value="indiranagar">Indiranagar</option>
+            <option value="koramangala">Koramangala</option>
+            <option value="mg-road">MG Road</option>
+            <option value="hsr-layout">HSR Layout</option>
+            <option value="jayanagar">Jayanagar</option>
+            <option value="whitefield">Whitefield</option>
+          </select>
+        </label>
+        <label>Date
+          <input id="date" name="date" type="date" required>
+        </label>
+        <label>Party size
+          <input id="party" name="party" type="number" min="1" max="10" value="4" required>
+        </label>
+        <label>Budget per person (₹)
+          <input id="budget" name="budget" type="number" min="100" step="50" value="1500" required>
+        </label>
+        <button type="submit" id="go">Find plans</button>
+      </form>
+
+      <div id="faults" class="faults" hidden>
+        <h2>Break a dependency</h2>
+        <p class="hint">Change how the mock upstream services behave, live, then plan again.
+          The service has a 300&nbsp;ms budget, so a service that takes 2&nbsp;s should not make
+          the answer take 2&nbsp;s.</p>
+        <div id="fault-rows"></div>
+        <p class="hint" id="cache-hint">Travel times are cached, so a slow travel service only
+          shows up for area pairs not searched yet.
+          <button type="button" id="reset-cache" class="link">Clear the cache</button></p>
+      </div>
+
+      <div class="log" id="log-wrap" hidden>
+        <h2>Recent requests</h2>
+        <ol id="log"></ol>
+      </div>
+    </section>
+
+    <section class="results" aria-labelledby="res-h" aria-live="polite">
+      <h2 id="res-h" class="visually-hidden">Results</h2>
+      <div id="status" class="status" hidden></div>
+      <div id="plans"></div>
+      <p id="empty" class="empty">Choose an area and press <strong>Find plans</strong>.</p>
+    </section>
+  </main>
+
+  <footer>
+    <a href="/metrics">Prometheus metrics</a>
+    <span aria-hidden="true">·</span>
+    <span>API: <code>POST /v1/plan</code></span>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

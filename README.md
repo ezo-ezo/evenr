@@ -40,7 +40,7 @@ internal/itinerary/  domain model, constraint solver, ranking
 internal/providers/  upstream interfaces, mocks with fault injection, cache, hedging
 internal/aggregator/ parallel fan-out to providers under one deadline
 internal/planner/    runs fetch, solve and rank for one request
-internal/httpapi/    HTTP handlers, request logging, fault-injection admin endpoints
+internal/httpapi/    HTTP handlers, demo page (web/), request logging, fault-injection admin endpoints
 internal/metrics/    Prometheus metrics
 internal/app/        assembles the service from config
 scripts/bench.sh     runs the benchmark scenarios
@@ -51,9 +51,21 @@ docs/                design notes, benchmark results
 
 ```bash
 go run ./cmd/server
-curl localhost:8080/healthz
 go test ./...
 ```
+
+Then open <http://localhost:8080>. The page plans an evening and shows each plan, how long the
+service took, and whether any upstream failed or timed out.
+
+To watch it cope with a failing dependency, start it with the admin controls on:
+
+```bash
+ENABLE_ADMIN=true go run ./cmd/server        # PowerShell: $env:ENABLE_ADMIN='true'; go run ./cmd/server
+```
+
+A "Break a dependency" panel appears. Set the travel service to **Slow (2 s)**, click
+**Clear the cache**, and plan again: the answer still arrives in about 300 ms, marked
+*Degraded*, with the affected travel times labelled as estimates.
 
 ### Configuration
 
@@ -64,7 +76,7 @@ go test ./...
 | `CACHE_TTL` | `10m` | Travel-time cache lifetime; `0` turns the cache off |
 | `HEDGE_DELAY` | `0` (off) | Wait this long before sending a hedged second attempt to an upstream |
 | `HEDGE_RATIO` | `0.1` | Hedge budget: hedges allowed per request |
-| `ENABLE_ADMIN` | off | Exposes `/admin/faults` to inject latency/errors into the mock upstreams (benchmarking only) |
+| `ENABLE_ADMIN` | off | Exposes `/admin/faults` (inject latency/errors into the mock upstreams) and `/admin/cache/reset`; for demos and benchmarking only |
 
 Metrics are served at `/metrics` in Prometheus format: request latency histograms by route and status, degraded plans, upstream failures by source and reason, and cache and hedge counters.
 
@@ -110,4 +122,5 @@ Some of what that looked like in practice:
 
 - **Tests as the check on generated code.** Each piece has boundary tests (a film at 20:15 passes, 20:14 fails), and the solver has a property test that verifies every plan it returns independently. Timing-sensitive tests were run repeatedly to look for flakiness.
 - **The benchmark result that did not flatter the design.** At a 5% tail, hedging did not improve p99. That was reported as measured, explained with the arithmetic (both attempts slow ≈ 0.25% per call across about six calls), and a 2% scenario was added rather than dropping the awkward one. Both are in the benchmarks.
+- **A bug the tests did not catch.** Running the finished service by hand showed a request for Indiranagar returning four plans in MG Road: every unit test passed because nothing in the ranking rewarded staying near the requested area. It was fixed with a proximity score and a regression test.
 - **Limits stated up front:** mocks not a network, single runs, no race detector.
