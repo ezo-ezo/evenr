@@ -128,3 +128,17 @@ func TestMocksHonourFaults(t *testing.T) {
 		t.Errorf("Tables with slow upstream: %v, want DeadlineExceeded", err)
 	}
 }
+
+func TestNearbyAreas(t *testing.T) {
+	got := NearbyAreas("indiranagar", 6)
+	want := []string{"mg-road", "koramangala"} // nearest first; whitefield is too far
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("NearbyAreas(indiranagar, 6) = %v, want %v", got, want)
+	}
+	if got := NearbyAreas("indiranagar", 0); len(got) != 0 {
+		t.Errorf("radius 0 = %v, want none", got)
+	}
+	if got := NearbyAreas("atlantis", 100); got != nil {
+		t.Errorf("unknown area = %v, want nil", got)
+	}
+}

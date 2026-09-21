@@ -32,6 +32,7 @@ cmd/server/          entrypoint
 internal/itinerary/  domain model, constraint solver, ranking
 internal/providers/  upstream clients (mock providers with injectable latency and failure)
 internal/aggregator/ parallel fan-out to providers under one deadline
+internal/planner/    runs fetch, solve and rank for one request
 internal/httpapi/    HTTP handlers
 docs/                design notes, benchmark results
 ```

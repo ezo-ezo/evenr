@@ -1,8 +1,11 @@
 package providers
 
 import (
+	"cmp"
 	"fmt"
 	"hash/fnv"
+	"math"
+	"slices"
 	"time"
 
 	"evenr/internal/itinerary"
@@ -107,4 +110,37 @@ func hash(parts ...string) uint32 {
 func midnight(t time.Time) time.Time {
 	y, m, d := t.In(itinerary.IST).Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, itinerary.IST)
+}
+
+// NearbyAreas returns the areas within radiusKm (straight-line) of the given
+// area, nearest first, excluding the area itself. It returns nil for an
+// unknown area.
+func NearbyAreas(key string, radiusKm float64) []string {
+	origin, ok := findArea(key)
+	if !ok {
+		return nil
+	}
+
+	type candidate struct {
+		key string
+		km  float64
+	}
+	var found []candidate
+	for _, a := range areas {
+		if a.key == key {
+			continue
+		}
+		if km := math.Hypot(a.x-origin.x, a.y-origin.y); km <= radiusKm {
+			found = append(found, candidate{a.key, km})
+		}
+	}
+	slices.SortFunc(found, func(a, b candidate) int {
+		return cmp.Or(cmp.Compare(a.km, b.km), cmp.Compare(a.key, b.key))
+	})
+
+	out := make([]string, len(found))
+	for i, c := range found {
+		out[i] = c.key
+	}
+	return out
 }
