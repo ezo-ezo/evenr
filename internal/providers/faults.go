@@ -13,6 +13,11 @@ type FaultConfig struct {
 	Latency time.Duration
 	// Jitter adds a uniformly random extra delay in [0, Jitter).
 	Jitter time.Duration
+	// TailRate is the probability in [0, 1] that a call is a slow outlier and
+	// takes TailLatency instead of Latency. Real upstreams are mostly fast
+	// with an occasional very slow call; this models that.
+	TailRate    float64
+	TailLatency time.Duration
 	// ErrorRate is the probability in [0, 1] that a call fails after its delay.
 	ErrorRate float64
 	// Down makes every call fail immediately with ErrUnavailable.
@@ -40,6 +45,13 @@ func (f *Faults) Set(cfg FaultConfig) {
 	f.mu.Unlock()
 }
 
+// Config returns the current configuration.
+func (f *Faults) Config() FaultConfig {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cfg
+}
+
 // Apply simulates the cost of one upstream call. It blocks for the configured
 // delay, returning ctx.Err() early if the context ends first, and then either
 // returns nil or ErrUnavailable. A nil *Faults injects nothing.
@@ -51,6 +63,9 @@ func (f *Faults) Apply(ctx context.Context) error {
 	f.mu.Lock()
 	cfg := f.cfg
 	delay := cfg.Latency
+	if cfg.TailRate > 0 && f.rng.Float64() < cfg.TailRate {
+		delay = cfg.TailLatency
+	}
 	if cfg.Jitter > 0 {
 		delay += time.Duration(f.rng.Int64N(int64(cfg.Jitter)))
 	}

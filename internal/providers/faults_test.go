@@ -106,3 +106,46 @@ func TestFaultsConcurrentUse(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestFaultsTailLatency(t *testing.T) {
+	always := NewFaults(1, FaultConfig{TailRate: 1, TailLatency: 40 * time.Millisecond})
+	start := time.Now()
+	if err := always.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply() = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed < 40*time.Millisecond {
+		t.Errorf("TailRate 1 returned after %v, want at least the tail latency", elapsed)
+	}
+
+	never := NewFaults(1, FaultConfig{TailRate: 0, TailLatency: time.Hour})
+	start = time.Now()
+	if err := never.Apply(context.Background()); err != nil {
+		t.Fatalf("Apply() = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 50*time.Millisecond {
+		t.Errorf("TailRate 0 took %v", elapsed)
+	}
+
+	// Roughly the requested share of calls should be slow.
+	f := NewFaults(3, FaultConfig{TailRate: 0.2, TailLatency: time.Millisecond})
+	slow := 0
+	for range 1000 {
+		start := time.Now()
+		_ = f.Apply(context.Background())
+		if time.Since(start) >= time.Millisecond {
+			slow++
+		}
+	}
+	if slow < 120 || slow > 280 {
+		t.Errorf("%d of 1000 calls were slow with TailRate 0.2", slow)
+	}
+}
+
+func TestFaultsConfigRoundTrip(t *testing.T) {
+	cfg := FaultConfig{Latency: time.Second, ErrorRate: 0.5, Down: true}
+	f := NewFaults(1, FaultConfig{})
+	f.Set(cfg)
+	if got := f.Config(); got != cfg {
+		t.Errorf("Config() = %+v, want %+v", got, cfg)
+	}
+}
