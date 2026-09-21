@@ -7,42 +7,52 @@ Built in Go. The interesting part is not the CRUD, it is two problems:
 1. **Constraint solving.** Showtimes, table availability, travel time and budget all interact. A plan is only valid if every leg fits.
 2. **A hard latency budget.** The answer needs several upstream sources (showtimes, restaurants, travel-time estimates). The service has to return a good answer within a fixed time even when one of them is slow or down.
 
-## Goals
+## Results
 
-| Goal | Target |
-|------|--------|
-| p99 latency, all dependencies healthy | measured, see `docs/benchmarks.md` |
-| p99 latency, one dependency slowed | measured, must still return results |
-| Behaviour when a dependency is down | degrade to partial results, never a 5xx |
+Measured at 250 requests/s with the built-in mock upstreams (15 ms base latency each) and a 300 ms budget. Full method, all eight scenarios and caveats are in [docs/benchmarks.md](docs/benchmarks.md).
 
-Numbers get filled in only once they have been measured.
+| Situation | Result |
+|-----------|--------|
+| Healthy | p99 28 ms |
+| Travel upstream 2 s slow | Answers at the 300 ms budget with estimated travel times, flagged in the response |
+| Same, with a warm cache | p99 28 ms, no effect |
+| 2% of upstream calls take 1 s | Without hedging: p99 302 ms, 11.7% of responses degraded. With budgeted hedging: **p99 77 ms, 0.14% degraded**, for about 2% extra upstream calls |
+| 5% of upstream calls take 1 s | Hedging cuts degraded responses from 25.8% to 1.3%, but **p99 stays at ~300 ms**, because 1.3% is still above the 1% that p99 measures. The write-up explains why |
 
-## Design intent
+These are mocks on one machine, single runs, and the load generator shares the CPU. They show how the budget, cache and hedging behave, not real-world capacity.
 
-- **Latency budget propagated with `context.Context`.** The request has one deadline. Each upstream call gets a slice of it.
-- **Fan-out with partial results.** Upstream calls run concurrently. Whatever has returned by the deadline is used, and the response says what was missing.
-- **Hedged requests** for slow-tail upstreams.
-- **Cached travel-time matrix** so repeated area pairs don't hit the upstream.
-- **Deterministic solver.** Same inputs give the same ranked output, which makes it testable.
+## Design
+
+Each request has one deadline. Upstream calls run in parallel and whatever has arrived by the deadline is used; the response says what was missing. Details and trade-offs are in [docs/design.md](docs/design.md). In short:
+
+- **Partial results over errors.** A slow or failed dependency degrades the answer instead of failing it. Unknown travel time falls back to a pessimistic estimate that is flagged and ranked lower.
+- **Travel-time cache** with TTL, symmetric keys and request coalescing. The fetch outlives the request that started it, so a request that times out still warms the cache for the next.
+- **Hedged requests with a budget**, so hedging cannot double the load on an upstream that is already struggling. The cache sits outside the hedge, otherwise the hedge would just join the first attempt's fetch.
+- **Deterministic solver and ranking.** Same inputs give the same output, so tests are exact. A property test checks every plan the solver returns against the constraints across many party sizes and budgets.
+- **Open-loop load generator** that measures from each request's scheduled time, so it cannot hide slow requests.
 
 ## Layout
 
 ```
 cmd/server/          entrypoint
+cmd/loadgen/         open-loop load generator
 internal/itinerary/  domain model, constraint solver, ranking
-internal/providers/  upstream clients (mock providers with injectable latency and failure)
+internal/providers/  upstream interfaces, mocks with fault injection, cache, hedging
 internal/aggregator/ parallel fan-out to providers under one deadline
 internal/planner/    runs fetch, solve and rank for one request
-internal/httpapi/    HTTP handlers, fault-injection admin endpoints
+internal/httpapi/    HTTP handlers, request logging, fault-injection admin endpoints
+internal/metrics/    Prometheus metrics
 internal/app/        assembles the service from config
+scripts/bench.sh     runs the benchmark scenarios
 docs/                design notes, benchmark results
 ```
 
 ## Run
 
 ```bash
-go run ./cmd/server                 # listens on :8080; ADDR and PLAN_BUDGET (e.g. 300ms) are configurable
+go run ./cmd/server
 curl localhost:8080/healthz
+go test ./...
 ```
 
 ### Configuration
@@ -55,6 +65,8 @@ curl localhost:8080/healthz
 | `HEDGE_DELAY` | `0` (off) | Wait this long before sending a hedged second attempt to an upstream |
 | `HEDGE_RATIO` | `0.1` | Hedge budget: hedges allowed per request |
 | `ENABLE_ADMIN` | off | Exposes `/admin/faults` to inject latency/errors into the mock upstreams (benchmarking only) |
+
+Metrics are served at `/metrics` in Prometheus format: request latency histograms by route and status, degraded plans, upstream failures by source and reason, and cache and hedge counters.
 
 ## API
 
@@ -81,21 +93,21 @@ timed out or failed, the response still succeeds with what was available and set
 | 413 | Body over 64 KB |
 | 422 | Area not recognised |
 | 503 | Every upstream failed, nothing to plan from |
-## Roadmap
 
-- [x] Project skeleton, health endpoint, graceful shutdown
-- [x] Domain model: `Venue`, `Showtime`, `TableSlot`, `Itinerary`
-- [x] Mock providers with configurable latency and failure injection
-- [x] Concurrent fan-out under a shared deadline, with partial results
-- [x] Solver: chain movie + dinner subject to time, travel and budget
-- [x] Ranking (idle time, travel, budget fit, dinner timing, venue diversity)
-- [x] HTTP endpoint: `POST /v1/plan`
-- [x] Travel-time cache (TTL, symmetric keys, request coalescing, fetch survives caller deadline)
-- [x] Hedged requests (with a retry budget so hedging cannot amplify an outage)
-- [ ] Load test (k6) and `docs/benchmarks.md`
-- [x] Prometheus metrics at `/metrics` (latency histograms, degraded plans, upstream failures, cache and hedge counters)
-- [ ] Tracing
+## Not done
+
+- Real upstream clients (the three interfaces are ready for them) and a real catalogue.
+- Per-source deadlines, adaptive hedge delay and circuit breakers, described in [docs/design.md](docs/design.md).
+- Distributed tracing.
+- `go test -race`: it needs cgo, which was not available where this was built, so the
+  concurrency-heavy tests have not been run under the race detector.
 
 ## How AI was used
 
-This section is filled in as the project goes: what was scaffolded or generated with AI assistance, and where the output had to be corrected.
+I built this with Claude Code (Claude Sonnet 5), working through the project in small steps: domain model, mock upstreams, fan-out, solver, ranking, HTTP layer, cache, hedging, metrics, load generator. The project choice, the Go stack, the name and the scope were mine; Claude wrote most of the code and tests from those instructions, and each step is its own commit (commits carry a `Co-Authored-By` trailer).
+
+Some of what that looked like in practice:
+
+- **Tests as the check on generated code.** Each piece has boundary tests (a film at 20:15 passes, 20:14 fails), and the solver has a property test that verifies every plan it returns independently. Timing-sensitive tests were run repeatedly to look for flakiness.
+- **The benchmark result that did not flatter the design.** At a 5% tail, hedging did not improve p99. That was reported as measured, explained with the arithmetic (both attempts slow ≈ 0.25% per call across about six calls), and a 2% scenario was added rather than dropping the awkward one. Both are in the benchmarks.
+- **Limits stated up front:** mocks not a network, single runs, no race detector.
