@@ -50,7 +50,7 @@ curl localhost:8080/healthz
 - [x] Mock providers with configurable latency and failure injection
 - [x] Concurrent fan-out under a shared deadline, with partial results
 - [x] Solver: chain movie + dinner subject to time, travel and budget
-- [ ] Ranking
+- [x] Ranking (idle time, travel, budget fit, dinner timing, venue diversity)
 - [ ] Travel-time cache
 - [ ] Hedged requests
 - [ ] Load test (k6) and `docs/benchmarks.md`
