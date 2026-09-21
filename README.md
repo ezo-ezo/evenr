@@ -40,10 +40,35 @@ docs/                design notes, benchmark results
 ## Run
 
 ```bash
-go run ./cmd/server
+go run ./cmd/server                 # listens on :8080; ADDR and PLAN_BUDGET (e.g. 300ms) are configurable
 curl localhost:8080/healthz
 ```
 
+## API
+
+`POST /v1/plan`
+
+```bash
+curl -X POST localhost:8080/v1/plan -d '{
+  "date": "2026-09-26",
+  "area": "indiranagar",
+  "party_size": 4,
+  "budget_per_person": 1500
+}'
+```
+
+Returns the best few dinner-and-film plans, best first. Each leg says how long the
+trip to it takes and whether that travel time was `travel_estimated`. If an upstream
+timed out or failed, the response still succeeds with what was available and sets
+`"degraded": true` with a `failures` list (`timeout`, `unavailable`, ...).
+
+| Status | Meaning |
+|--------|---------|
+| 200 | Plans returned (possibly degraded, possibly empty) |
+| 400 | Malformed body, bad date, or invalid party size / budget |
+| 413 | Body over 64 KB |
+| 422 | Area not recognised |
+| 503 | Every upstream failed, nothing to plan from |
 ## Roadmap
 
 - [x] Project skeleton, health endpoint, graceful shutdown
@@ -52,6 +77,7 @@ curl localhost:8080/healthz
 - [x] Concurrent fan-out under a shared deadline, with partial results
 - [x] Solver: chain movie + dinner subject to time, travel and budget
 - [x] Ranking (idle time, travel, budget fit, dinner timing, venue diversity)
+- [x] HTTP endpoint: `POST /v1/plan`
 - [ ] Travel-time cache
 - [ ] Hedged requests
 - [ ] Load test (k6) and `docs/benchmarks.md`

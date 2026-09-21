@@ -9,16 +9,29 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"evenr/internal/aggregator"
+	"evenr/internal/httpapi"
+	"evenr/internal/planner"
+	"evenr/internal/providers"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("ok"))
+	p := planner.New(&aggregator.Aggregator{
+		Showtimes:   &providers.MockShowtimes{},
+		Restaurants: &providers.MockRestaurants{},
+		Travel:      &providers.MockTravel{},
 	})
+	if v := os.Getenv("PLAN_BUDGET"); v != "" {
+		budget, err := time.ParseDuration(v)
+		if err != nil || budget <= 0 {
+			logger.Error("PLAN_BUDGET must be a positive duration such as 300ms", "value", v)
+			os.Exit(1)
+		}
+		p.Budget = budget
+	}
 
 	addr := os.Getenv("ADDR")
 	if addr == "" {
@@ -27,7 +40,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           mux,
+		Handler:           httpapi.New(p, logger),
 		ReadHeaderTimeout: 2 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,
@@ -38,7 +51,7 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("server starting", "addr", addr)
+		logger.Info("server starting", "addr", addr, "plan_budget", p.Budget.String())
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "err", err)
 			stop()
