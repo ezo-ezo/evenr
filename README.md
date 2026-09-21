@@ -31,6 +31,7 @@ Numbers get filled in only once they have been measured.
 cmd/server/          entrypoint
 internal/itinerary/  domain model, constraint solver, ranking
 internal/providers/  upstream clients (mock providers with injectable latency and failure)
+internal/aggregator/ parallel fan-out to providers under one deadline
 internal/httpapi/    HTTP handlers
 docs/                design notes, benchmark results
 ```
@@ -47,7 +48,7 @@ curl localhost:8080/healthz
 - [x] Project skeleton, health endpoint, graceful shutdown
 - [x] Domain model: `Venue`, `Showtime`, `TableSlot`, `Itinerary`
 - [x] Mock providers with configurable latency and failure injection
-- [ ] Concurrent fan-out under a shared deadline, with partial results
+- [x] Concurrent fan-out under a shared deadline, with partial results
 - [ ] Solver: chain movie + dinner subject to time, travel and budget
 - [ ] Ranking
 - [ ] Travel-time cache
