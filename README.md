@@ -45,7 +45,7 @@ curl localhost:8080/healthz
 ## Roadmap
 
 - [x] Project skeleton, health endpoint, graceful shutdown
-- [ ] Domain model: `Venue`, `Showtime`, `Slot`, `Itinerary`
+- [x] Domain model: `Venue`, `Showtime`, `TableSlot`, `Itinerary`
 - [ ] Mock providers with configurable latency and failure injection
 - [ ] Concurrent fan-out under a shared deadline, with partial results
 - [ ] Solver: chain movie + dinner subject to time, travel and budget
