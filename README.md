@@ -78,7 +78,7 @@ timed out or failed, the response still succeeds with what was available and set
 - [x] Solver: chain movie + dinner subject to time, travel and budget
 - [x] Ranking (idle time, travel, budget fit, dinner timing, venue diversity)
 - [x] HTTP endpoint: `POST /v1/plan`
-- [ ] Travel-time cache
+- [x] Travel-time cache (TTL, symmetric keys, request coalescing, fetch survives caller deadline)
 - [ ] Hedged requests
 - [ ] Load test (k6) and `docs/benchmarks.md`
 - [ ] Metrics and tracing
