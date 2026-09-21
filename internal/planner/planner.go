@@ -98,7 +98,7 @@ func (p *Planner) Plan(ctx context.Context, req itinerary.Request) (Result, erro
 	}
 
 	return Result{
-		Plans:      itinerary.Rank(req, solved, p.Rank),
+		Plans:      itinerary.Rank(req, solved, data.Travel.Between, p.Rank),
 		Failures:   data.Failures,
 		Considered: len(solved),
 		Elapsed:    time.Since(start),

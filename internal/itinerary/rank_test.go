@@ -18,7 +18,9 @@ func plan(t *testing.T, tb TableSlot, sh Showtime, travel TravelFunc) Itinerary 
 	return it
 }
 
-func score1(p Itinerary) float64 { return score(req, p) }
+func score1(p Itinerary) float64 {
+	return score(req, p, func(string) float64 { return neutralProximity })
+}
 
 func TestRankPrefersLessIdleTime(t *testing.T) {
 	// Dinner ends 19:30. Same travel and price, only the film start differs.
@@ -26,7 +28,7 @@ func TestRankPrefersLessIdleTime(t *testing.T) {
 	tight := plan(t, tb, show("tight", "a", 20, 0, 2*time.Hour, 300), fixedTravel(10*time.Minute))
 	loose := plan(t, tb, show("loose", "a", 22, 30, 90*time.Minute, 300), fixedTravel(10*time.Minute))
 
-	got := Rank(req, []Itinerary{loose, tight}, RankOptions{})
+	got := Rank(req, []Itinerary{loose, tight}, unknownTravel, RankOptions{})
 	if got[0].Itinerary.Legs[1].Venue.ID != "tight" {
 		t.Errorf("best = %s, want tight (scores %.3f vs %.3f)",
 			got[0].Itinerary.Legs[1].Venue.ID, got[0].Score, got[1].Score)
@@ -71,7 +73,7 @@ func TestRankPrefersDinnerNearPreferredTime(t *testing.T) {
 	if good.Legs[0].Start.Equal(early.Legs[0].Start) {
 		t.Fatal("fixture error: dinners should start at different times")
 	}
-	if got := Rank(req, []Itinerary{early, good}, RankOptions{}); got[0].Itinerary.Legs[0].Venue.ID != "good" {
+	if got := Rank(req, []Itinerary{early, good}, unknownTravel, RankOptions{}); got[0].Itinerary.Legs[0].Venue.ID != "good" {
 		t.Errorf("best = %s, want good", got[0].Itinerary.Legs[0].Venue.ID)
 	}
 }
@@ -83,7 +85,7 @@ func TestRankScoresStayInRange(t *testing.T) {
 		plan(t, tb, show("b", "a", 23, 0, 90*time.Minute, 300), fixedTravel(55*time.Minute)),
 		plan(t, tb, show("c", "a", 21, 0, 2*time.Hour, 800), fixedTravel(5*time.Minute)),
 	}
-	for _, r := range Rank(req, plans, RankOptions{}) {
+	for _, r := range Rank(req, plans, unknownTravel, RankOptions{}) {
 		if r.Score < 0 || r.Score > 1 {
 			t.Errorf("score %.3f outside [0, 1]", r.Score)
 		}
@@ -97,7 +99,7 @@ func TestRankSortsAndLimits(t *testing.T) {
 		plans = append(plans, plan(t, tb, show(string(rune('a'+i)), "a", start, 0, 60*time.Minute, 300), fixedTravel(10*time.Minute)))
 	}
 
-	all := Rank(req, plans, RankOptions{})
+	all := Rank(req, plans, unknownTravel, RankOptions{})
 	if len(all) != 4 {
 		t.Fatalf("got %d results, want 4", len(all))
 	}
@@ -107,7 +109,7 @@ func TestRankSortsAndLimits(t *testing.T) {
 		}
 	}
 
-	top2 := Rank(req, plans, RankOptions{Limit: 2})
+	top2 := Rank(req, plans, unknownTravel, RankOptions{Limit: 2})
 	if len(top2) != 2 || top2[0].Score != all[0].Score || top2[1].Score != all[1].Score {
 		t.Errorf("Limit 2 did not return the top two")
 	}
@@ -125,7 +127,7 @@ func TestRankDiversifiesVenues(t *testing.T) {
 		}
 	}
 
-	got := Rank(req, plans, RankOptions{Limit: 4, MaxPerVenue: 2})
+	got := Rank(req, plans, unknownTravel, RankOptions{Limit: 4, MaxPerVenue: 2})
 	if len(got) != 4 {
 		t.Fatalf("got %d results, want 4", len(got))
 	}
@@ -150,7 +152,7 @@ func TestRankCapIsSoft(t *testing.T) {
 	for i := range 6 {
 		plans = append(plans, plan(t, tb, show(string(rune('a'+i)), "a", 21, i*5, 2*time.Hour, 300), fixedTravel(10*time.Minute)))
 	}
-	if got := Rank(req, plans, RankOptions{Limit: 5, MaxPerVenue: 2}); len(got) != 5 {
+	if got := Rank(req, plans, unknownTravel, RankOptions{Limit: 5, MaxPerVenue: 2}); len(got) != 5 {
 		t.Errorf("got %d results, want 5 despite the cap", len(got))
 	}
 }
@@ -161,10 +163,10 @@ func TestRankIsDeterministic(t *testing.T) {
 	for _, s := range []string{"x", "y", "z"} {
 		plans = append(plans, plan(t, tb, show(s, "a", 21, 0, 2*time.Hour, 300), fixedTravel(10*time.Minute)))
 	}
-	want := Rank(req, plans, DefaultRankOptions())
+	want := Rank(req, plans, unknownTravel, DefaultRankOptions())
 
 	slicesReverse(plans)
-	got := Rank(req, plans, DefaultRankOptions())
+	got := Rank(req, plans, unknownTravel, DefaultRankOptions())
 	for i := range want {
 		if got[i].Itinerary.Legs[1].Venue.ID != want[i].Itinerary.Legs[1].Venue.ID {
 			t.Fatalf("order differs at %d after reversing the input", i)
@@ -173,7 +175,77 @@ func TestRankIsDeterministic(t *testing.T) {
 }
 
 func TestRankEmpty(t *testing.T) {
-	if got := Rank(req, nil, DefaultRankOptions()); len(got) != 0 {
+	if got := Rank(req, nil, unknownTravel, DefaultRankOptions()); len(got) != 0 {
 		t.Errorf("got %d results from no plans", len(got))
+	}
+}
+
+// distances answers proximity lookups from the requested area "a": itself in 5
+// minutes, "b" in 25, "c" in 60.
+func distances(from, to string) (time.Duration, bool) {
+	if from != "a" {
+		return 0, false
+	}
+	switch to {
+	case "a":
+		return 5 * time.Minute, true
+	case "b":
+		return 25 * time.Minute, true
+	case "c":
+		return 60 * time.Minute, true
+	}
+	return 0, false
+}
+
+func TestRankPrefersRequestedArea(t *testing.T) {
+	// Identical plans in every respect except where the venues are. The
+	// request is for area "a", so the plan in "a" must win, and the one in
+	// "b" must beat the one in "c".
+	inArea := func(dinner, film, area string) Itinerary {
+		return plan(t, table(dinner, area, 18, 0, 700, 4), show(film, area, 20, 0, 2*time.Hour, 300), fixedTravel(10*time.Minute))
+	}
+	here := inArea("d-a", "s-a", "a")
+	near := inArea("d-b", "s-b", "b")
+	far := inArea("d-c", "s-c", "c")
+
+	got := Rank(req, []Itinerary{far, near, here}, distances, RankOptions{})
+	order := []string{
+		got[0].Itinerary.Legs[0].Venue.Area,
+		got[1].Itinerary.Legs[0].Venue.Area,
+		got[2].Itinerary.Legs[0].Venue.Area,
+	}
+	if order[0] != "a" || order[1] != "b" || order[2] != "c" {
+		t.Errorf("order by area = %v, want [a b c]", order)
+	}
+	if got[0].Score <= got[1].Score || got[1].Score <= got[2].Score {
+		t.Errorf("scores should fall with distance: %.3f %.3f %.3f", got[0].Score, got[1].Score, got[2].Score)
+	}
+}
+
+func TestRankProximityBeatsSmallTimingAdvantage(t *testing.T) {
+	// The regression that motivated proximity: a plan in another area with
+	// marginally nicer timing used to outrank a plan in the requested area.
+	home := plan(t, table("d-a", "a", 18, 30, 700, 4), show("s-a", "a", 20, 40, 2*time.Hour, 300), fixedTravel(10*time.Minute))
+	away := plan(t, table("d-b", "b", 19, 30, 700, 4), show("s-b", "b", 21, 40, 2*time.Hour, 300), fixedTravel(10*time.Minute))
+
+	got := Rank(req, []Itinerary{away, home}, distances, RankOptions{})
+	if got[0].Itinerary.Legs[0].Venue.Area != "a" {
+		t.Errorf("a plan 20 minutes away outranked one in the requested area: %s first (%.3f vs %.3f)",
+			got[0].Itinerary.Legs[0].Venue.Area, got[0].Score, got[1].Score)
+	}
+}
+
+func TestRankUnknownProximityDoesNotReorder(t *testing.T) {
+	// If travel from the requested area is unavailable, proximity must be a
+	// constant so the other factors still decide.
+	tb := table("d", "a", 18, 0, 700, 4)
+	tight := plan(t, tb, show("tight", "b", 20, 0, 2*time.Hour, 300), fixedTravel(10*time.Minute))
+	loose := plan(t, tb, show("loose", "c", 22, 30, 90*time.Minute, 300), fixedTravel(10*time.Minute))
+
+	for name, travel := range map[string]TravelFunc{"nil": nil, "unknown": unknownTravel} {
+		got := Rank(req, []Itinerary{loose, tight}, travel, RankOptions{})
+		if got[0].Itinerary.Legs[1].Venue.ID != "tight" {
+			t.Errorf("%s travel: best = %s, want tight", name, got[0].Itinerary.Legs[1].Venue.ID)
+		}
 	}
 }

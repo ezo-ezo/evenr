@@ -84,11 +84,17 @@ statistical. A property test runs it across five party sizes and five budgets an
 every returned plan against the constraints independently.
 
 ### Ranking is a judgment call, and says so
-Plans are scored 0-1 on idle time between stops, travel time, budget fit (prefers around
-80% of budget, not the cheapest) and dinner start near 19:30. The weights are my
-judgment, not fitted to data. With real usage the right move is to log which plan
-users pick and tune the weights against that. Results are also capped at two per venue so
-the user sees variety, but the cap is soft so a thin catalogue still returns enough plans.
+Plans are scored 0-1 on idle time between stops, travel time, proximity to the requested
+area, budget fit (prefers around 80% of budget, not the cheapest) and dinner start near
+19:30. The weights are my judgment, not fitted to data. With real usage the right move is
+to log which plan users pick and tune the weights against that. Results are also capped at
+two per venue so the user sees variety, but the cap is soft so a thin catalogue still
+returns enough plans.
+
+Proximity was added after running the service by hand: a request for Indiranagar returned
+four plans in MG Road, because nothing in the score rewarded staying near the requested
+area. It is measured as travel time from the requested area, and is a constant when that
+data is unavailable so a failed travel lookup cannot scramble the order.
 
 ### Load testing measures from the scheduled time
 The load generator is open-loop: it sends at a fixed rate and measures latency from when

@@ -9,10 +9,19 @@ import (
 // Scoring parameters. Every component is scaled to [0, 1] and combined with
 // fixed weights that sum to 1, so a plan's score is also in [0, 1].
 const (
-	weightGap    = 0.35
-	weightTravel = 0.25
-	weightBudget = 0.15
-	weightTiming = 0.25
+	weightGap       = 0.30
+	weightTravel    = 0.15
+	weightBudget    = 0.10
+	weightTiming    = 0.20
+	weightProximity = 0.25
+
+	// A venue this much further from the requested area than the area is from
+	// itself scores zero on proximity. "Near Indiranagar" should not quietly
+	// mean 30 minutes away.
+	proximityWorst = 30 * time.Minute
+	// Used when the travel time from the requested area is unknown. It is the
+	// same for every plan, so it cannot reorder them.
+	neutralProximity = 0.5
 
 	// A short wait between stops is welcome; only waiting beyond this counts
 	// against a plan.
@@ -56,10 +65,16 @@ func DefaultRankOptions() RankOptions {
 // Rank scores plans against the request and returns the best ones, best
 // first. Ties break on the same fixed order Solve uses, so equal inputs give
 // equal output.
-func Rank(req Request, plans []Itinerary, opts RankOptions) []Ranked {
+//
+// travel is used to measure how far each venue is from req.Area; it may be
+// nil or return unknown values, in which case proximity does not affect the
+// order.
+func Rank(req Request, plans []Itinerary, travel TravelFunc, opts RankOptions) []Ranked {
+	proximity := proximityScorer(req, travel)
+
 	ranked := make([]Ranked, len(plans))
 	for i, p := range plans {
-		ranked[i] = Ranked{Itinerary: p, Score: score(req, p)}
+		ranked[i] = Ranked{Itinerary: p, Score: score(req, p, proximity)}
 	}
 	slices.SortFunc(ranked, compareRanked)
 
@@ -118,7 +133,32 @@ func compareRanked(a, b Ranked) int {
 	return cmp.Or(cmp.Compare(b.Score, a.Score), compareItineraries(a.Itinerary, b.Itinerary))
 }
 
-func score(req Request, it Itinerary) float64 {
+// proximityScorer returns a function scoring how close an area is to the
+// requested one, from 1 (as close as it gets) to 0 (proximityWorst or more
+// further). Results are cached because a plan set only touches a few areas.
+func proximityScorer(req Request, travel TravelFunc) func(area string) float64 {
+	var self time.Duration
+	if travel != nil {
+		self, _ = travel(req.Area, req.Area)
+	}
+
+	cache := map[string]float64{}
+	return func(area string) float64 {
+		if s, ok := cache[area]; ok {
+			return s
+		}
+		s := neutralProximity
+		if travel != nil {
+			if d, ok := travel(req.Area, area); ok {
+				s = 1 - clamp01(float64(max(d-self, 0))/float64(proximityWorst))
+			}
+		}
+		cache[area] = s
+		return s
+	}
+}
+
+func score(req Request, it Itinerary, proximity func(area string) float64) float64 {
 	var (
 		idle, travel time.Duration
 		estimated    bool
@@ -145,7 +185,13 @@ func score(req Request, it Itinerary) float64 {
 
 	timing := 1 - clamp01(float64(abs(dinnerStart-preferredDinnerStart))/float64(dinnerTimeWorst))
 
-	s := weightGap*gap + weightTravel*trav + weightBudget*budget + weightTiming*timing
+	var near float64
+	for _, l := range it.Legs {
+		near += proximity(l.Venue.Area)
+	}
+	near /= float64(max(len(it.Legs), 1))
+
+	s := weightGap*gap + weightTravel*trav + weightBudget*budget + weightTiming*timing + weightProximity*near
 	if estimated {
 		s *= estimatedTravelDiscount
 	}
