@@ -24,20 +24,27 @@ type Planner interface {
 }
 
 // New returns the service's HTTP handler.
-func New(p Planner, logger *slog.Logger) http.Handler {
+func New(p Planner, logger *slog.Logger, opts ...Option) http.Handler {
 	h := &handler{planner: p, logger: logger}
+	for _, opt := range opts {
+		opt(h)
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, "ok")
 	})
 	mux.HandleFunc("POST /v1/plan", h.plan)
+	if h.faults != nil {
+		h.routeAdmin(mux)
+	}
 	return h.logRequests(mux)
 }
 
 type handler struct {
 	planner Planner
 	logger  *slog.Logger
+	faults  map[string]*providers.Faults // nil unless admin is enabled
 }
 
 type planRequest struct {

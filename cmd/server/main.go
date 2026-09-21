@@ -10,28 +10,18 @@ import (
 	"syscall"
 	"time"
 
-	"evenr/internal/aggregator"
-	"evenr/internal/httpapi"
-	"evenr/internal/planner"
-	"evenr/internal/providers"
+	"evenr/internal/app"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-	p := planner.New(&aggregator.Aggregator{
-		Showtimes:   &providers.MockShowtimes{},
-		Restaurants: &providers.MockRestaurants{},
-		Travel:      &providers.MockTravel{},
-	})
-	if v := os.Getenv("PLAN_BUDGET"); v != "" {
-		budget, err := time.ParseDuration(v)
-		if err != nil || budget <= 0 {
-			logger.Error("PLAN_BUDGET must be a positive duration such as 300ms", "value", v)
-			os.Exit(1)
-		}
-		p.Budget = budget
+	cfg, err := app.ConfigFromEnv(os.Getenv)
+	if err != nil {
+		logger.Error("invalid configuration", "err", err)
+		os.Exit(1)
 	}
+	a := app.New(cfg, logger)
 
 	addr := os.Getenv("ADDR")
 	if addr == "" {
@@ -40,7 +30,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           httpapi.New(p, logger),
+		Handler:           a.Handler,
 		ReadHeaderTimeout: 2 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      5 * time.Second,
@@ -51,7 +41,13 @@ func main() {
 	defer stop()
 
 	go func() {
-		logger.Info("server starting", "addr", addr, "plan_budget", p.Budget.String())
+		logger.Info("server starting",
+			"addr", addr,
+			"plan_budget", cfg.PlanBudget.String(),
+			"cache_ttl", cfg.CacheTTL.String(),
+			"hedge_delay", cfg.HedgeDelay.String(),
+			"admin", cfg.EnableAdmin,
+		)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("server failed", "err", err)
 			stop()

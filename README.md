@@ -33,7 +33,8 @@ internal/itinerary/  domain model, constraint solver, ranking
 internal/providers/  upstream clients (mock providers with injectable latency and failure)
 internal/aggregator/ parallel fan-out to providers under one deadline
 internal/planner/    runs fetch, solve and rank for one request
-internal/httpapi/    HTTP handlers
+internal/httpapi/    HTTP handlers, fault-injection admin endpoints
+internal/app/        assembles the service from config
 docs/                design notes, benchmark results
 ```
 
@@ -43,6 +44,17 @@ docs/                design notes, benchmark results
 go run ./cmd/server                 # listens on :8080; ADDR and PLAN_BUDGET (e.g. 300ms) are configurable
 curl localhost:8080/healthz
 ```
+
+### Configuration
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ADDR` | `:8080` | Listen address |
+| `PLAN_BUDGET` | `300ms` | Total time allowed for a request's upstream calls |
+| `CACHE_TTL` | `10m` | Travel-time cache lifetime; `0` turns the cache off |
+| `HEDGE_DELAY` | `0` (off) | Wait this long before sending a hedged second attempt to an upstream |
+| `HEDGE_RATIO` | `0.1` | Hedge budget: hedges allowed per request |
+| `ENABLE_ADMIN` | off | Exposes `/admin/faults` to inject latency/errors into the mock upstreams (benchmarking only) |
 
 ## API
 
