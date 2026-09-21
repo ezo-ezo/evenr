@@ -77,15 +77,17 @@ func (r Request) Validate() error {
 }
 
 // Leg is one stop in an itinerary. TravelBefore is the time spent getting
-// here from the previous stop (zero for the first leg).
+// here from the previous stop (zero for the first leg). TravelEstimated is
+// true when the upstream travel time was unavailable and a fallback was used.
 type Leg struct {
-	Kind          VenueKind
-	Venue         Venue
-	Title         string
-	Start         time.Time
-	End           time.Time
-	TravelBefore  time.Duration
-	CostPerPerson Money
+	Kind            VenueKind
+	Venue           Venue
+	Title           string
+	Start           time.Time
+	End             time.Time
+	TravelBefore    time.Duration
+	TravelEstimated bool
+	CostPerPerson   Money
 }
 
 // Itinerary is an ordered plan. Legs do not overlap once travel is included.

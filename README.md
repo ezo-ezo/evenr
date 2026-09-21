@@ -49,7 +49,7 @@ curl localhost:8080/healthz
 - [x] Domain model: `Venue`, `Showtime`, `TableSlot`, `Itinerary`
 - [x] Mock providers with configurable latency and failure injection
 - [x] Concurrent fan-out under a shared deadline, with partial results
-- [ ] Solver: chain movie + dinner subject to time, travel and budget
+- [x] Solver: chain movie + dinner subject to time, travel and budget
 - [ ] Ranking
 - [ ] Travel-time cache
 - [ ] Hedged requests
