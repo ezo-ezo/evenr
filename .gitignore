@@ -1,0 +1,17 @@
+# Binaries
+/bin/
+*.exe
+
+# Test / profiling output
+*.out
+*.prof
+coverage.txt
+
+# Env and local config
+.env
+.env.*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
