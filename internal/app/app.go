@@ -11,6 +11,7 @@ import (
 
 	"evenr/internal/aggregator"
 	"evenr/internal/httpapi"
+	"evenr/internal/metrics"
 	"evenr/internal/planner"
 	"evenr/internal/providers"
 )
@@ -94,6 +95,8 @@ type App struct {
 	Cache *providers.CachedTravel
 	// Hedgers is empty when hedging is disabled.
 	Hedgers map[string]*providers.Hedger
+	// Metrics is served at /metrics.
+	Metrics *metrics.Metrics
 }
 
 // New builds the service. Each upstream is wired as
@@ -109,6 +112,7 @@ func New(cfg Config, logger *slog.Logger) *App {
 			"travel":    providers.NewFaults(3, providers.FaultConfig{}),
 		},
 		Hedgers: map[string]*providers.Hedger{},
+		Metrics: metrics.New(),
 	}
 
 	var (
@@ -139,7 +143,12 @@ func New(cfg Config, logger *slog.Logger) *App {
 	})
 	a.Planner.Budget = cfg.PlanBudget
 
-	var opts []httpapi.Option
+	if a.Cache != nil {
+		a.Metrics.RegisterCache(a.Cache)
+	}
+	a.Metrics.RegisterHedgers(a.Hedgers)
+
+	opts := []httpapi.Option{httpapi.WithMetrics(a.Metrics)}
 	if cfg.EnableAdmin {
 		opts = append(opts, httpapi.WithFaultAdmin(a.Faults))
 	}

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"evenr/internal/metrics"
 	"evenr/internal/providers"
 )
 
@@ -119,4 +120,9 @@ func join(names []string) string {
 		out += n
 	}
 	return out
+}
+
+// WithMetrics records request and plan metrics and serves them at /metrics.
+func WithMetrics(m *metrics.Metrics) Option {
+	return func(h *handler) { h.metrics = m }
 }

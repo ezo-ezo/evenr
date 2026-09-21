@@ -93,7 +93,8 @@ timed out or failed, the response still succeeds with what was available and set
 - [x] Travel-time cache (TTL, symmetric keys, request coalescing, fetch survives caller deadline)
 - [x] Hedged requests (with a retry budget so hedging cannot amplify an outage)
 - [ ] Load test (k6) and `docs/benchmarks.md`
-- [ ] Metrics and tracing
+- [x] Prometheus metrics at `/metrics` (latency histograms, degraded plans, upstream failures, cache and hedge counters)
+- [ ] Tracing
 
 ## How AI was used
 

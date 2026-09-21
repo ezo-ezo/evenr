@@ -185,3 +185,46 @@ func TestFeatureTogglesBuildTheRightStack(t *testing.T) {
 		t.Errorf("full stack request failed: %d %s", rec.Code, rec.Body)
 	}
 }
+
+func TestMetricsEndpoint(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.EnableAdmin = true
+	cfg.CacheTTL = time.Minute
+	cfg.HedgeDelay = 20 * time.Millisecond
+	cfg.PlanBudget = 100 * time.Millisecond
+	a := New(cfg, quiet)
+
+	do(t, a.Handler, http.MethodPost, "/v1/plan", planBody)
+	do(t, a.Handler, http.MethodPost, "/v1/plan", planBody) // second one hits the cache
+	do(t, a.Handler, http.MethodPost, "/v1/plan", `not json`)
+	do(t, a.Handler, http.MethodGet, "/some/random/path/123", "")
+
+	// Make showtimes time out so the degraded and failure counters move.
+	do(t, a.Handler, http.MethodPut, "/admin/faults/showtimes", `{"latency_ms":5000}`)
+	do(t, a.Handler, http.MethodPost, "/v1/plan", planBody)
+
+	rec, _ := do(t, a.Handler, http.MethodGet, "/metrics", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /metrics = %d", rec.Code)
+	}
+	body := rec.Body.String()
+
+	for _, want := range []string{
+		`evenr_http_request_duration_seconds_count{route="POST /v1/plan",status="200"} 3`,
+		`evenr_http_request_duration_seconds_count{route="POST /v1/plan",status="400"} 1`,
+		`route="unmatched",status="404"`,
+		`evenr_plans_degraded_total 1`,
+		`evenr_upstream_failures_total{reason="timeout",source="showtimes"}`,
+		`evenr_plan_duration_seconds_count 3`,
+		`evenr_travel_cache_hits_total`,
+		`evenr_hedge_requests_total{upstream="travel"}`,
+		`go_goroutines`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("metrics output missing %q", want)
+		}
+	}
+	if strings.Contains(body, "/some/random/path") {
+		t.Error("raw request paths must not appear as label values")
+	}
+}

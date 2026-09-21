@@ -12,6 +12,7 @@ import (
 
 	"evenr/internal/aggregator"
 	"evenr/internal/itinerary"
+	"evenr/internal/metrics"
 	"evenr/internal/planner"
 	"evenr/internal/providers"
 )
@@ -35,6 +36,9 @@ func New(p Planner, logger *slog.Logger, opts ...Option) http.Handler {
 		_, _ = io.WriteString(w, "ok")
 	})
 	mux.HandleFunc("POST /v1/plan", h.plan)
+	if h.metrics != nil {
+		mux.Handle("GET /metrics", h.metrics.Handler())
+	}
 	if h.faults != nil {
 		h.routeAdmin(mux)
 	}
@@ -45,6 +49,7 @@ type handler struct {
 	planner Planner
 	logger  *slog.Logger
 	faults  map[string]*providers.Faults // nil unless admin is enabled
+	metrics *metrics.Metrics             // nil disables metrics
 }
 
 type planRequest struct {
@@ -103,6 +108,11 @@ func (h *handler) plan(w http.ResponseWriter, r *http.Request) {
 	res, err := h.planner.Plan(r.Context(), req)
 	switch {
 	case err == nil:
+		if h.metrics != nil {
+			h.metrics.ObservePlan(res, func(_ string, err error) string {
+				return failureReason(aggregator.Failure{Err: err})
+			})
+		}
 		writeJSON(w, http.StatusOK, toResponse(res))
 	case errors.Is(err, planner.ErrInvalidRequest):
 		writeError(w, http.StatusBadRequest, err.Error())
