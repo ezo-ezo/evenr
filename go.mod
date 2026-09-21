@@ -1,3 +1,3 @@
-module plan-my-evening
+module evenr
 
 go 1.27.0

@@ -1,4 +1,4 @@
-# plan-my-evening
+# Evenr
 
 A backend that turns *"Saturday, 4 friends, near Indiranagar, ₹1500 each, want a movie and dinner"* into ranked, **feasible** itineraries, for example dinner at 6:30, then the 9:15 show, with travel time accounted for.
 
