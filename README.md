@@ -79,7 +79,7 @@ timed out or failed, the response still succeeds with what was available and set
 - [x] Ranking (idle time, travel, budget fit, dinner timing, venue diversity)
 - [x] HTTP endpoint: `POST /v1/plan`
 - [x] Travel-time cache (TTL, symmetric keys, request coalescing, fetch survives caller deadline)
-- [ ] Hedged requests
+- [x] Hedged requests (with a retry budget so hedging cannot amplify an outage)
 - [ ] Load test (k6) and `docs/benchmarks.md`
 - [ ] Metrics and tracing
 
