@@ -35,7 +35,54 @@ These are mocks on one machine, single runs, and the load generator shares the C
 
 ## Design
 
-Each request has one deadline. Upstream calls run in parallel and whatever has arrived by the deadline is used; the response says what was missing. Details and trade-offs are in [docs/design.md](docs/design.md). In short:
+Each request has one deadline. Upstream calls run in parallel and whatever has arrived by the deadline is used; the response says what was missing. Details and trade-offs are in [docs/design.md](docs/design.md).
+
+```mermaid
+flowchart TD
+    client(["Client / demo page"])
+
+    subgraph service["Evenr (single deadline: PLAN_BUDGET)"]
+        api["httpapi<br/>validate · status codes · logging · metrics"]
+        planner["planner<br/>one deadline for the whole request"]
+        aggregator["aggregator<br/>fan out in parallel, collect partial results"]
+        solver["solver<br/>every feasible dinner + film pair"]
+        ranker["ranker<br/>score · diversify · keep the best few"]
+    end
+
+    subgraph up["Upstream providers"]
+        direction TB
+        showtimes["ShowtimeProvider"]
+        tables["RestaurantProvider"]
+        travelIf["TravelProvider"]
+    end
+
+    hedgeS["hedge<br/>(budgeted 2nd attempt)"]
+    hedgeT["hedge<br/>(budgeted 2nd attempt)"]
+    hedgeTr["hedge<br/>(budgeted 2nd attempt)"]
+    cache[("travel-time cache<br/>TTL · coalescing")]
+
+    client -->|"POST /v1/plan"| api
+    api --> planner --> aggregator --> solver --> ranker --> api
+    ranker -->|"ranked plans + degraded/failures"| client
+
+    aggregator -->|showtimes x areas| hedgeS
+    hedgeS --> showtimes
+    aggregator -->|tables x areas| hedgeT
+    hedgeT --> tables
+    aggregator -->|travel x area pairs| cache
+    cache -.->|on miss| hedgeTr
+    hedgeTr --> travelIf
+
+    metrics[("/metrics<br/>Prometheus")]
+    admin["/admin/faults<br/>/admin/cache/reset<br/>(ENABLE_ADMIN only)"]
+    api -.-> metrics
+    admin -.->|inject latency / errors| showtimes
+    admin -.-> tables
+    admin -.-> travelIf
+    admin -.->|clear| cache
+```
+
+In short:
 
 - **Partial results over errors.** A slow or failed dependency degrades the answer instead of failing it. Unknown travel time falls back to a pessimistic estimate that is flagged and ranked lower.
 - **Travel-time cache** with TTL, symmetric keys and request coalescing. The fetch outlives the request that started it, so a request that times out still warms the cache for the next.
